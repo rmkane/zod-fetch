@@ -1,20 +1,26 @@
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { rest } from "msw";
-import { setupServer } from "msw/node";
+// Built-in or polyfill-style imports
 import "isomorphic-fetch";
-import { createZodFetcher } from ".";
+
+// Third-party modules
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
 import { z, ZodError } from "zod";
 
+// Local project modules
+import { createZodFetcher } from ".";
+
 const server = setupServer();
+
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 it("Should create a default fetcher", async () => {
   server.use(
-    rest.get("https://example.com", (req, res, ctx) => {
-      return res(ctx.json({ hello: "world" }), ctx.status(200));
-    }),
+    http.get("https://example.com", () => {
+      return HttpResponse.json({ hello: "world" }, { status: 200 });
+    })
   );
 
   const fetchWithZod = createZodFetcher();
@@ -23,7 +29,7 @@ it("Should create a default fetcher", async () => {
     z.object({
       hello: z.string(),
     }),
-    "https://example.com",
+    "https://example.com"
   );
 
   expect(response).toEqual({
@@ -33,43 +39,44 @@ it("Should create a default fetcher", async () => {
 
 it("Should throw an error with mis-matched schemas with a default fetcher", async () => {
   server.use(
-    rest.get("https://example.com", (req, res, ctx) => {
-      return res(ctx.json({ hello: "world" }), ctx.status(200));
-    }),
+    http.get("https://example.com", () => {
+      return HttpResponse.json({ hello: "world" }, { status: 200 });
+    })
   );
 
   const fetchWithZod = createZodFetcher();
 
-  await expect(
-    fetchWithZod(
+  try {
+    await fetchWithZod(
       z.object({
         hello: z.number(),
       }),
-      "https://example.com",
-    ),
-  ).rejects.toMatchObject(
-    ZodError.create([
-      {
-        code: "invalid_type",
-        expected: "number",
-        received: "string",
-        path: ["hello"],
-        message: "Expected number, received string",
-      },
-    ]),
-  );
+      "https://example.com"
+    );
+    throw new Error("Expected ZodError but none was thrown");
+  } catch (err) {
+    expect(err).toBeInstanceOf(ZodError);
+    expect((err as ZodError).issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_type",
+          expected: "number",
+          message: "Invalid input: expected number, received string",
+          path: ["hello"],
+        }),
+      ])
+    );
+  }
 });
 
 it("Should throw an error if response is not ok with the default fetcher", async () => {
   server.use(
-    rest.get("https://example.com", (req, res, ctx) => {
-      return res(
-        ctx.json({
-          error: "Invalid permissions",
-        }),
-        ctx.status(403),
+    http.get("https://example.com", () => {
+      return HttpResponse.json(
+        { error: "Invalid permissions" },
+        { status: 403 }
       );
-    }),
+    })
   );
 
   const fetchWithZod = createZodFetcher();
@@ -79,8 +86,8 @@ it("Should throw an error if response is not ok with the default fetcher", async
       z.object({
         hello: z.number(),
       }),
-      "https://example.com",
-    ),
+      "https://example.com"
+    )
   ).rejects.toMatchInlineSnapshot("[Error: Request failed with status 403]");
 });
 
@@ -90,15 +97,15 @@ it("Should handle successes with custom fetchers", async () => {
   });
 
   server.use(
-    rest.get("https://example.com", (req, res, ctx) => {
-      return res(ctx.json({ hello: "world" }), ctx.status(200));
-    }),
+    http.get("https://example.com", () => {
+      return HttpResponse.json({ hello: "world" }, { status: 200 });
+    })
   );
 
   const response = await fetcher(
     z.object({
       hello: z.string(),
-    }),
+    })
   );
 
   expect(response).toEqual({
