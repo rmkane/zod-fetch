@@ -37,6 +37,23 @@ it("Should create a default fetcher", async () => {
   });
 });
 
+it("Should successfully parse empty responses with the default fetcher", async () => {
+  server.use(
+    http.get("https://example.com", () => {
+      return new HttpResponse("", { status: 200 });
+    })
+  );
+
+  const fetchWithZod = createZodFetcher();
+
+  const response = await fetchWithZod(
+    z.undefined(),
+    "https://example.com",
+  );
+
+  expect(response).toBeUndefined();
+});
+
 it("Should throw an error with mis-matched schemas with a default fetcher", async () => {
   server.use(
     http.get("https://example.com", () => {

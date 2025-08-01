@@ -23,7 +23,9 @@ export const defaultFetcher = async (
   if (!response.ok) {
     throw new Error(`Request failed with status ${response.status}`);
   }
-  return response.json();
+  // Workaround since `response.json()` would throw on empty responses
+  const text = await response.text();
+  return text.length ? JSON.parse(text) : undefined;
 };
 
 /**
